@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+rakshak.db
+data/enterprise-attack.json
+eval/results.json
+.pytest_cache/
+.venv/

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="panel"><h2>Submit alert (JSON)</h2>
+<textarea id="alert">{"source":"manual","rule_name":"Suspicious PowerShell","host":"WS-014","user":"jdoe","process":"powershell.exe","command_line":"powershell.exe -nop -w hidden -enc SQBFAFgA","raw_message":"Process created"}</textarea>
+<p><button onclick="submitAlert()">Triage</button> <span id="msg" class="err"></span></p></div>
+<div class="panel"><h2>Queue</h2>
+<table><tr><th>#</th><th>Rule</th><th>Host</th><th>Recommended</th><th>Status</th><th>Flags</th></tr>
+{% for a in alerts %}<tr>
+<td><a href="/ui/alerts/{{ a.id }}">{{ a.id }}</a></td><td>{{ a.rule_name }}</td><td>{{ a.host }}</td>
+<td>{% if a.recommended_severity %}<span class="sev {{ a.recommended_severity }}">{{ a.recommended_severity }}</span>{% endif %}</td>
+<td>{{ a.status }}</td><td>{% if a.injection_flagged %}<span class="tag warn">injection</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="6">No alerts yet.</td></tr>{% endfor %}</table></div>
+<script>
+async function submitAlert(){
+  const msg=document.getElementById('msg'); msg.textContent='';
+  let body; try{ body=JSON.parse(document.getElementById('alert').value);}catch(e){msg.textContent='Invalid JSON';return;}
+  const r=await fetch('/alerts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json(); if(r.ok){location.href='/ui/alerts/'+d.id;} else {msg.textContent=JSON.stringify(d.detail||d);}
+}
+</script>{% endblock %}

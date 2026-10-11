@@ -1,0 +1,10 @@
+.git
+.env
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+rakshak.db
+data/enterprise-attack.json
+docs
+eval/results.json

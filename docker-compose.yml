@@ -1,0 +1,83 @@
+# FREE (local model):   docker compose --profile free up --build
+# Mock / hosted / Claude: docker compose up --build      (choose provider in .env)
+x-llm-env: &llm-env
+  LLM_PROVIDER: ${LLM_PROVIDER:-}                  # mock | ollama | openai_compat | anthropic
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-5-5}
+  OLLAMA_BASE_URL: http://ollama:11434
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-}
+  STIX_PATH: /srv/data/enterprise-attack.json
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: rakshak
+      MYSQL_USER: rakshak
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-rakshak}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    volumes:
+      - rakshak_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      <<: *llm-env
+      DATABASE_URL: mysql+pymysql://rakshak:${MYSQL_PASSWORD:-rakshak}@mysql:3306/rakshak
+    ports:
+      - "8000:8000"
+
+  # ---- free local LLM (profile "free") ----
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["free"]
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  ollama-pull:                      # one-shot: downloads the model into the volume
+    image: ollama/ollama:latest
+    profiles: ["free"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-llama3.2:3b}"]
+    restart: "no"
+
+  # docker compose --profile eval run --rm eval
+  eval:
+    build: .
+    profiles: ["eval"]
+    command: ["python", "eval/run_eval.py"]
+    environment:
+      <<: *llm-env
+
+  # docker compose --profile test run --rm test
+  test:
+    build: .
+    profiles: ["test"]
+    command: ["python", "-m", "pytest", "-q"]
+
+volumes:
+  rakshak_mysql:
+  ollama_models:

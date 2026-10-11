@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Alert {{ a.id }} · Rakshak{% endblock %}
+{% block body %}
+{% set t = a.triage %}
+<p><a href="/">&larr; queue</a></p>
+<div class="panel"><h2>Alert #{{ a.id }} &middot; {{ a.status }}</h2>
+{% if t %}
+  <p>Recommended severity: <span class="sev {{ t.recommended_severity }}">{{ t.recommended_severity }}</span>
+  <span class="tag">rule floor: {{ t.rule_floor }}</span>
+  {% if t.floor_raised_llm %}<span class="tag warn">floor overrode LLM</span>{% endif %}
+  {% if t.llm_skipped %}<span class="tag warn">LLM skipped (injection)</span>{% endif %}
+  {% if t.injection_flagged %}<span class="tag warn">injection suspected</span>{% endif %}
+  <span class="tag">{{ t.model }}</span></p>
+  {% if t.error %}<p class="err">LLM error: {{ t.error }}</p>{% endif %}
+{% endif %}</div>
+<div class="grid">
+  <div class="panel"><h2>Raw alert (untrusted)</h2><pre>{{ a.payload | tojson(indent=2) }}</pre></div>
+  <div class="panel"><h2>LLM triage</h2>
+  {% if t and t.llm_output %}
+    <p>{{ t.llm_output.summary }}</p><p><b>Rationale:</b> {{ t.llm_output.rationale }}</p>
+    <p>LLM severity: {{ t.llm_output.recommended_severity }} &middot; confidence {{ t.llm_output.confidence }}</p>
+  {% else %}<p>No LLM output (skipped or failed).</p>{% endif %}
+  <h2>ATT&amp;CK (verified against STIX)</h2>
+  {% for x in (t.verified_techniques if t else []) %}<span class="tag">{{ x.id }} {{ x.name }}</span>{% else %}<p>None verified.</p>{% endfor %}
+  {% for x in (t.dropped_techniques if t else []) %}<span class="tag warn">dropped {{ x.id }} ({{ x.reason }})</span>{% endfor %}
+  {% if t and t.rule_reasons %}<h2>Severity floor reasons</h2><ul>{% for r in t.rule_reasons %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+  {% if t and t.injection_findings %}<h2>Injection findings</h2><ul>{% for f in t.injection_findings %}<li><b>{{ f.rule }}</b> ({{ f.weight }}) in <code>{{ f.field }}</code>: {{ f.excerpt }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+</div>
+<div class="panel"><h2>Analyst review</h2>
+{% if a.reviews %}{% for r in a.reviews %}<p>{{ r.analyst }}: <b>{{ r.decision }}</b> &rarr; <span class="sev {{ r.final_severity }}">{{ r.final_severity }}</span>{% if r.approved_lowering %} <span class="tag warn">lowered below floor</span>{% endif %}<br>{{ r.notes }}</p>{% endfor %}
+{% else %}
+<label>Analyst</label><input id="analyst" placeholder="your name">
+<label>Decision</label><select id="decision"><option value="accept">Accept recommendation</option><option value="override">Override severity</option><option value="false_positive">Mark false positive</option></select>
+<label>Final severity (override only)</label><select id="sev"><option>low</option><option>medium</option><option>high</option><option>critical</option></select>
+<label>Notes (required to go below the rule floor)</label><textarea id="notes" style="min-height:60px"></textarea>
+<label><input type="checkbox" id="lower" style="width:auto"> I approve lowering below the rule-based floor</label>
+<p><button onclick="review()">Submit review</button></p><div id="err" class="err"></div>
+<script>
+async function review(){
+  const body={analyst:analyst.value,decision:decision.value,final_severity:decision.value==='override'?sev.value:null,
+              approve_lowering:lower.checked,notes:notes.value||null};
+  const r=await fetch('/alerts/{{ a.id }}/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.ok){location.reload();}else{const d=await r.json();err.textContent=typeof d.detail==='string'?d.detail:JSON.stringify(d.detail);}
+}
+</script>{% endif %}</div>
+<div class="panel"><h2>Audit log</h2><table>
+{% for e in audit %}<tr><td>{{ e.ts[:19] }}</td><td>{{ e.actor }}</td><td>{{ e.event }}</td></tr>{% endfor %}</table></div>
+{% endblock %}
